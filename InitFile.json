@@ -1,0 +1,9 @@
+{
+    "tested_project":"SantonUI",
+    "parent_path":"./target/debug/santonui",
+    "folder_tests_name":"Tests/SantonUITests",
+    "folder_unresolved_tests":"Tests/SantonUITests/UnresolvedFiles",
+    "folder_with_files_project":"Sources/SantonUI",
+    "folder_file_exceptions":["Supporting Files"],
+    "file_extension":["swift"]
+}

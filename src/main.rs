@@ -1,46 +1,42 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
-
 use chrono::Local;
-use handlebars::{template, Handlebars};
+use handlebars::Handlebars;
+use std::convert::From;
+use std::{
+    fs::{self, File},
+    io::Write,
+    path::{Path, PathBuf, StripPrefixError},
+};
 
 mod config_file;
 
 use config_file::*;
-use serde_json::json;
 
+// Основная функция программы
 fn main() {
+    // Путь к файлу конфигурации
     let path_buf = PathBuf::from("./InitFile.json");
 
-    println!("Path_buf: {:#?}", path_buf);
+    // Читаем конфигурацию из файла
+    let config = read_config(&path_buf).unwrap();
 
-    let init_file: InitFile = read_init_file(&path_buf, create_init_file).unwrap();
+    // Получаем пути к папкам с исходниками, тестами и неразрешенными тестами
+    let folder_paths = FolderPaths::from(&config);
 
-    let parent_path = PathBuf::from(&init_file.parent_path);
-
-    let sources_folder = parent_path.join(&init_file.folder_with_files_project);
-    let test_folder = parent_path.join(&init_file.folder_tests_name);
-    let unresolved_folder = parent_path.join(&init_file.folder_unresolved_tests);
-
-    println!("Sources_folder: {:#?}", sources_folder);
-    println!("Test_folder: {:#?}", test_folder);
-    println!("Unresolved_folder: {:#?}", unresolved_folder);
-
-    match traverse_directory(&sources_folder, &init_file) {
-        Ok(_) => println!("{:#?}", init_file),
+    // Рекурсивно обходим папку с исходниками и создаем unit-тесты
+    match traverse_directory(&folder_paths.sources, &config) {
+        Ok(_) => println!("{:#?}", config),
         Err(err) => println!("{:#?}", err),
     }
 }
 
-// Функция для рекурсивного обхода папок
+// Функция для рекурсивного обхода папки
 fn traverse_directory(path: &PathBuf, init_file: &InitFile) -> Result<(), std::io::Error> {
     // Получаем список записей в папке
     for entry in fs::read_dir(path)? {
         let entry = entry?;
         let path = entry.path();
 
+        // Проверяем, соответствует ли имя файла/папки требованиям
         if !is_valid_name(&path, init_file) {
             continue;
         }
@@ -52,119 +48,152 @@ fn traverse_directory(path: &PathBuf, init_file: &InitFile) -> Result<(), std::i
             traverse_directory(&path, init_file)?;
         } else if path.is_file() && !is_hidden(&path) {
             println!("Файл: {}", path.display());
-            // Здесь можно добавить обработку файлов
-            create_unit_test_if_need(&path, init_file);
+            // Создаем unit-тест для файла, если он еще не существует
+            match create_unit_test_if_need(&path, init_file) {
+                Err(err) => {
+                    panic!("Create unit test!: {}", err)
+                }
+                Ok(v) => v,
+            };
         }
     }
-
     return Ok(());
 }
 
-fn create_unit_test_if_need(path: &Path, init_file: &InitFile) {
-    let parent_path = PathBuf::from(&init_file.parent_path);
-    let sources_head = parent_path.join(&init_file.folder_with_files_project);
+// Функция для получения пути к unit-тесту и его имени
+fn get_unit_test_path(
+    path: &Path,
+    config: &InitFile,
+) -> Result<(PathBuf, String), StripPrefixError> {
+    let folder_paths = FolderPaths::from(config);
+    let sources_head = &folder_paths.sources; // Путь к папке с исходниками
 
-    let mut test_path = parent_path.join(&init_file.folder_tests_name);
-    let mut unresolved_path = parent_path.join(&init_file.folder_unresolved_tests);
+    // Получаем относительный путь файла исходника
+    let stripped_path = path.parent().unwrap().strip_prefix(&sources_head)?;
 
-    match path.parent().unwrap().strip_prefix(&sources_head) {
-        Ok(stripped_path) => {
-            test_path.push(stripped_path);
-            unresolved_path.push(stripped_path);
-        }
-        Err(err) => {
-            println!("Strip prefix error: {}", err);
-            return;
-        }
-    }
+    // Формируем путь к файлу unit-теста
+    let mut test_path = folder_paths.tests.clone();
+    test_path.push(stripped_path);
 
-    println!("Finale test_path: {:#?}", test_path);
-    println!("Finale unresolver_path: {:#?}", unresolved_path);
+    // Формируем имя файла unit-теста
+    let unit_test_name = path.file_stem().unwrap().to_str().unwrap().to_string() + "Tests.swift";
+    let unit_test_path = test_path.join(&unit_test_name);
 
-    let unit_test_name =
-        path.file_stem().unwrap().to_str().unwrap().to_string() + &String::from("Tests.swift");
-    let unit_test_pathbuf = test_path.join(&unit_test_name);
-
-    let unit_test_path = unit_test_pathbuf.as_path();
-
-    println!("unit_test_path: {:#?}", unit_test_path);
-
-    if unit_test_path.exists() {
-        return;
-    } else {
-        let class_name = Path::new(&unit_test_name)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-
-        let now = Local::now();
-        let formatted_date = now.format("%d/%m/%Y").to_string();
-
-        let unit_swift = UnitSwift {
-            project_name: init_file.tested_project.clone(),
-            class_name: class_name,
-            created_date: formatted_date,
-        };
-
-        let template_path = Path::new("./ExampleSwiftUnitTest.swift");
-
-        match _create_unit_test(template_path, unit_swift) {
-            Ok(result) => {
-                println!("Result: {:#?}", result);
-                panic!("Something went wrong!");
-            }
-            Err(err) => {
-                println!("_create_unit_test err: {:#?}", err);
-                panic!("Something went wrong!");
-            }
-        };
-    }
-
-    println!("is have unit_test: {}", unit_test_path.exists());
-    println!("is have swift file in project: {}", path.exists());
+    Ok((unit_test_path, unit_test_name))
 }
 
-fn _create_unit_test(
+// Функция для создания unit-теста
+fn create_unit_test(
+    unit_test_path: &Path,
+    config: &InitFile,
+    unit_test_name: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Извлекаем имя класса из имени файла unit-теста
+    let class_name = Path::new(unit_test_name)
+        .file_stem()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+
+    // Получаем текущую дату и форматируем ее
+    let now = Local::now();
+    let formatted_date = now.format("%d/%m/%Y").to_string();
+
+    // Создаем структуру с данными для шаблона unit-теста
+    let unit_swift = UnitSwift {
+        project_name: config.tested_project.clone(),
+        class_name,
+        created_date: formatted_date,
+    };
+
+    // Путь к шаблону unit-теста
+    let template_path = Path::new("./ExampleSwiftUnitTest.swift");
+
+    // Рендерим шаблон unit-теста
+    let result = _render_unit_test_template(template_path, unit_swift)?;
+
+    // Создаем все необходимые директории
+    fs::create_dir_all(unit_test_path.parent().unwrap())?;
+
+    // Создаем файл unit-теста и записываем в него сгенерированный код
+    let mut file = File::create(unit_test_path)?;
+    file.write_all(result.as_bytes())?;
+    Ok(())
+}
+
+/// Создает unit-тест для указанного файла Swift, если он еще не существует.
+fn create_unit_test_if_need(path: &Path, config: &InitFile) -> Result<(), std::io::Error> {
+    // Переменные для хранения пути к unit-тесту и его имени
+    let unit_test_path: PathBuf;
+    let unit_test_name: String;
+
+    // Получаем путь к unit-тесту
+    match get_unit_test_path(path, config) {
+        Ok(value) => (unit_test_path, unit_test_name) = value,
+        Err(err) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                err.to_string(),
+            ))
+        }
+    }
+
+    // Проверяем, существует ли unit-тест
+    if !unit_test_path.exists() {
+        // Создаем unit-тест
+        match create_unit_test(&unit_test_path, config, &unit_test_name) {
+            Ok(_) => return Ok(()),
+            Err(err) => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    err.to_string(),
+                ))
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// Функция для рендеринга шаблона unit-теста
+fn _render_unit_test_template(
     unit_test_path: &Path,
     unit_swift: UnitSwift,
 ) -> Result<String, Box<dyn std::error::Error>> {
     let mut handlebars = Handlebars::new();
     let template_name = &unit_swift.project_name;
-
     handlebars.register_template_file(template_name, unit_test_path)?;
 
-    let data = json!({
-        "class_name": &unit_swift.class_name,
-        "created_date": &unit_swift.created_date,
-        "project_name": &unit_swift.project_name,
-    });
+    // Создаем JSON-объект с данными для шаблона
+    let data = unit_swift.get_json();
 
+    // Рендерим шаблон с данными
     let result = handlebars.render(template_name, &data)?;
-
     Ok(result)
 }
 
-fn is_valid_name(path: &PathBuf, init_file: &InitFile) -> bool {
+// Функция для проверки, соответствует ли имя файла/папки требованиям
+fn is_valid_name(path: &PathBuf, config: &InitFile) -> bool {
+    let file_name = match path.file_name() {
+        Some(name) => name.to_str().unwrap().to_string(),
+        None => return false,
+    };
+
     if path.is_dir() {
-        let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        return !init_file.folder_file_exceptions.contains(&file_name);
+        // Проверяем, не входит ли имя папки в список исключений
+        !config.folder_file_exceptions.contains(&file_name)
     } else if path.is_file() {
-        let file_name = path.file_name().unwrap().to_str().unwrap().to_string();
-        let exception_name: bool = !init_file.folder_file_exceptions.contains(&file_name);
-        let file_extension: String;
-
-        match path.extension() {
-            Some(value) => file_extension = value.to_str().unwrap_or("Empty").to_string(),
-            None => file_extension = String::from("Empty"),
-        }
-
-        let exception_type: bool = init_file.file_extension.contains(&file_extension);
-        return exception_name && exception_type;
+        // Проверяем расширение файла и не входит ли имя файла в список исключений
+        let file_extension = match path.extension() {
+            Some(ext) => ext.to_str().unwrap_or("Empty").to_string(),
+            None => String::from("Empty"),
+        };
+        !config.folder_file_exceptions.contains(&file_name)
+            && config.file_extension.contains(&file_extension)
+    } else {
+        false
     }
-
-    return false;
 }
 
 // Функция для проверки, является ли файл скрытым
@@ -173,10 +202,4 @@ fn is_hidden(path: &PathBuf) -> bool {
         .and_then(|name| name.to_str())
         .map(|name| name.starts_with('.'))
         .unwrap_or(false)
-}
-
-struct UnitSwift {
-    project_name: String,
-    class_name: String,
-    created_date: String,
 }

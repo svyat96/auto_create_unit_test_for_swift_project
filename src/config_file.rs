@@ -1,64 +1,88 @@
-// Импортируем необходимые модули
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-// Функция для чтения конфигурации из файла
+/// Reads the configuration from a file.
+///
+/// If the file does not exist, it is created with default values.
+///
+/// # Arguments
+///
+/// * `path` - Path to the configuration file.
+///
+/// # Returns
+///
+/// Result containing the `InitFile` structure or an `std::io::Error`.
 pub fn read_config(path: &Path) -> Result<InitFile, std::io::Error> {
     if !path.exists() {
-        // Создаем файл конфигурации с дефолтными значениями, если он не существует
+        // Create the configuration file with default values if it does not exist.
         create_init_file(path)?;
     }
 
-    // Читаем содержимое файла конфигурации
+    // Read the contents of the configuration file.
     let config_str = fs::read_to_string(path)?;
 
-    // Десериализуем содержимое файла в структуру InitFile
+    // Deserialize the contents of the file into an `InitFile` structure.
     let config: InitFile = serde_json::from_str(&config_str)?;
 
     Ok(config)
 }
 
-// Функция для создания файла InitFile.json с дефолтными значениями (пример)
+/// Creates the `InitFile.json` file with default values.
+///
+/// # Arguments
+///
+/// * `path` - Path to the file to be created.
+///
+/// # Returns
+///
+/// Result of the operation as `std::io::Result`.
 fn create_init_file(path: &Path) -> std::io::Result<()> {
-    // Создаем структуру InitFile с дефолтными значениями
+    // Create an `InitFile` structure with default values.
     let config_str = serde_json::to_string_pretty(&InitFile::default())?;
 
-    // Записываем структуру в файл в формате JSON
+    // Write the structure to the file in JSON format.
     fs::write(path, config_str)?;
 
     Ok(())
 }
 
-// Структура для хранения конфигурации
+/// Structure for storing configuration.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct InitFile {
-    pub tested_project: String,              // Название проекта, к которому подключаем тесты
-    pub parent_path: String,               // Путь, к которому добавляются пути для тестовых папок
-    pub folder_tests_name: String,          // Название папки, куда сохранять тесты
-    pub folder_unresolved_tests: String,    // Название папки с тестами без ассоциации с рабочими файлами
-    pub folder_with_files_project: String,  // Путь до файлов проекта
-    pub folder_file_exceptions: Vec<String>, // Названия папок/файлов, которые нужно пропускать
-    pub file_extension: Vec<String>,        // Расширения файлов, которые нужно обрабатывать
+    /// Name of the project to which tests are connected.
+    pub tested_project: String,
+    /// Path to which paths for test folders are added.
+    pub parent_path: String,
+    /// Name of the folder where tests are saved.
+    pub folder_tests_name: String,
+    /// Name of the folder with tests without association with working files.
+    pub folder_unresolved_tests: String,
+    /// Path to the project files.
+    pub folder_with_files_project: String,
+    /// Names of folders/files to be skipped.
+    pub folder_file_exceptions: Vec<String>,
+    /// File extensions to be processed.
+    pub file_extension: Vec<String>,
 }
 
-// Реализация метода Default для структуры InitFile, который возвращает структуру с дефолтными значениями
+/// Implementation of the `Default` trait for the `InitFile` structure, which returns the structure with default values.
 impl Default for InitFile {
     fn default() -> Self {
-        return InitFile {
-            tested_project: String::from("Проект к которому подключаем тесты"),
-            parent_path: String::from("Путь к которому добавляются пути для тестовых папок"),
-            folder_tests_name: String::from("Куда сохранять тесты"),
-            folder_unresolved_tests: String::from("Папка с тестами без ассоциации с рабочими файлами"),
-            folder_with_files_project: String::from("Путь до файлов проекта"),
-            folder_file_exceptions: vec![String::from("Названия папок/файлов которые нужно пропускать")],
+        InitFile {
+            tested_project: String::from("Project to which tests are connected"),
+            parent_path: String::from("Path to which paths for test folders are added"),
+            folder_tests_name: String::from("Folder where tests are saved"),
+            folder_unresolved_tests: String::from("Folder with tests without association with working files"),
+            folder_with_files_project: String::from("Path to project files"),
+            folder_file_exceptions: vec![String::from("Names of folders/files to be skipped")],
             file_extension: vec![String::from(".swift")],
-        };
+        }
     }
 }
 
-// Реализация метода PartialEq для структуры InitFile, который сравнивает две структуры на равенство
+/// Implementation of the `PartialEq` trait for the `InitFile` structure, which compares two structures for equality.
 impl PartialEq for InitFile {
     fn eq(&self, other: &Self) -> bool {
         self.tested_project == other.tested_project
@@ -70,51 +94,80 @@ impl PartialEq for InitFile {
             && self.file_extension == other.file_extension
     }
 }
-// Структура для хранения данных о unit-тесте
+
+/// Structure for storing data about a unit test.
 pub struct UnitSwift {
-    pub project_name: String, // Имя проекта
-    pub class_name: String,   // Имя класса unit-теста
-    pub created_date: String, // Дата создания unit-теста
+    /// Project name.
+    pub project_name: String,
+    /// Unit test class name.
+    pub class_name: String,
+    /// Unit test creation date.
+    pub created_date: String,
 }
 
-// Реализация методов для структуры UnitSwift
+/// Implementation of methods for the `UnitSwift` structure.
 impl UnitSwift {
-    // Функция для преобразования данных UnitSwift в формат JSON
+    /// Converts `UnitSwift` data to JSON format.
+    ///
+    /// # Returns
+    ///
+    /// A `serde_json::Value` containing the data in JSON format.
     pub fn get_json(&self) -> serde_json::Value {
-        return json!({
+        json!({
             "class_name": &self.class_name,
             "created_date": &self.created_date,
             "project_name": &self.project_name,
-        });
+        })
     }
 }
 
-// Структура для хранения путей к папкам
+/// Structure for storing folder paths.
 pub struct FolderPaths {
-    pub parent: PathBuf,      // Родительский путь
-    pub sources: PathBuf,    // Путь к папке с исходниками
-    pub tests: PathBuf,       // Путь к папке с тестами
-    pub unresolved: PathBuf, // Путь к папке с неразрешенными тестами
+    /// Parent path.
+    pub parent: PathBuf,
+    /// Path to the source folder.
+    pub sources: PathBuf,
+    /// Path to the test folder.
+    pub tests: PathBuf,
+    /// Path to the unresolved tests folder.
+    pub unresolved: PathBuf,
 }
 
-// Реализация trait From для преобразования InitFile в FolderPaths
+/// Implementation of the `From` trait for converting `InitFile` to `FolderPaths`.
 impl From<InitFile> for FolderPaths {
-    // Преобразуем структуру InitFile в FolderPaths
+    /// Converts the `InitFile` structure to `FolderPaths`.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The `InitFile` structure.
+    ///
+    /// # Returns
+    ///
+    /// A `FolderPaths` structure.
     fn from(value: InitFile) -> Self {
-        return FolderPaths::from(&value); // Вызываем другой метод From для ссылки на InitFile
+        FolderPaths::from(&value) // Call another `From` method for a reference to `InitFile`.
     }
 }
 
-// Реализация trait From для преобразования ссылки на InitFile в FolderPaths
+/// Implementation of the `From` trait for converting a reference to `InitFile` to `FolderPaths`.
 impl From<&InitFile> for FolderPaths {
+    /// Converts a reference to `InitFile` to `FolderPaths`.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - A reference to the `InitFile` structure.
+    ///
+    /// # Returns
+    ///
+    /// A `FolderPaths` structure.
     fn from(value: &InitFile) -> Self {
-        let parent_path = PathBuf::from(&value.parent_path); // Создаем PathBuf из родительского пути
+        let parent_path = PathBuf::from(&value.parent_path); // Create a `PathBuf` from the parent path.
 
         FolderPaths {
-            parent: parent_path.clone(),       // Сохраняем родительский путь
-            sources: parent_path.join(&value.folder_with_files_project), // Формируем путь к папке с исходниками
-            tests: parent_path.join(&value.folder_tests_name),           // Формируем путь к папке с тестами
-            unresolved: parent_path.join(&value.folder_unresolved_tests), // Формируем путь к папке с неразрешенными тестами
+            parent: parent_path.clone(), // Save the parent path.
+            sources: parent_path.join(&value.folder_with_files_project), // Form the path to the source folder.
+            tests: parent_path.join(&value.folder_tests_name), // Form the path to the test folder.
+            unresolved: parent_path.join(&value.folder_unresolved_tests), // Form the path to the unresolved tests folder.
         }
     }
 }

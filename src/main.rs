@@ -17,15 +17,17 @@ fn main() {
     let path_buf = PathBuf::from("./InitFile.json");
 
     // Read the configuration from the file.
+    println!("Read the configuration from the file: Run");
     let config = read_config(&path_buf).unwrap();
 
     // Get paths to the source, test, and unresolved test folders.
     let folder_paths = FolderPaths::from(&config);
 
     // Recursively traverse the source folder and create unit tests.
+    println!("Recursively traverse the source folder and create unit tests: Run");
     match traverse_directory(&folder_paths.sources, &config) {
-        Ok(_) => println!("{:#?}", config),
-        Err(err) => println!("{:#?}", err),
+        Ok(_) => println!("Config: {:#?}", config),
+        Err(err) => println!("Recursively traverse the source folder and create unit tests: Error:{:#?}", err),
     }
 }
 
@@ -37,32 +39,67 @@ fn main() {
 /// * `init_file` - Configuration file.
 fn traverse_directory(path: &PathBuf, init_file: &InitFile) -> Result<(), std::io::Error> {
     // Get the list of entries in the directory.
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
-        let path = entry.path();
 
-        // Check if the file/folder name meets the requirements.
-        if !is_valid_name(&path, init_file) {
-            continue;
-        }
-
-        // Check if the entry is a directory.
-        if path.is_dir() && !is_hidden(&path) {
-            println!("Directory: {}", path.display());
-            // Recursively call the function for the subdirectory.
-            traverse_directory(&path, init_file)?;
-        } else if path.is_file() && !is_hidden(&path) {
-            println!("File: {}", path.display());
-            // Create a unit test for the file if it does not already exist.
-            match create_unit_test_if_need(&path, init_file) {
-                Err(err) => {
-                    panic!("Create unit test!: {}", err)
+    match fs::read_dir(path) {
+        Err(err) => {
+            return err.
+        },
+        Ok(dir) => {
+            for entry in dir {
+                let entry = entry?;
+                let path = entry.path();
+        
+                // Check if the file/folder name meets the requirements.
+                if !is_valid_name(&path, init_file) {
+                    continue;
                 }
-                Ok(v) => v,
-            };
+        
+                // Check if the entry is a directory.
+                if path.is_dir() && !is_hidden(&path) {
+                    println!("Directory: {}", path.display());
+                    // Recursively call the function for the subdirectory.
+                    traverse_directory(&path, init_file)?;
+                } else if path.is_file() && !is_hidden(&path) {
+                    println!("File: {}", path.display());
+                    // Create a unit test for the file if it does not already exist.
+                    match create_unit_test_if_need(&path, init_file) {
+                        Err(err) => {
+                            panic!("Create unit test!: {}", err)
+                        }
+                        Ok(v) => v,
+                    };
+                }
+            }
+            return Ok(());
         }
-    }
-    return Ok(());
+    };
+
+    // for entry in fs::read_dir(path)? {
+    //     let entry = entry?;
+    //     let path = entry.path();
+
+    //     // Check if the file/folder name meets the requirements.
+    //     if !is_valid_name(&path, init_file) {
+    //         continue;
+    //     }
+
+    //     // Check if the entry is a directory.
+    //     if path.is_dir() && !is_hidden(&path) {
+    //         println!("Directory: {}", path.display());
+    //         // Recursively call the function for the subdirectory.
+    //         traverse_directory(&path, init_file)?;
+    //     } else if path.is_file() && !is_hidden(&path) {
+    //         println!("File: {}", path.display());
+    //         // Create a unit test for the file if it does not already exist.
+    //         match create_unit_test_if_need(&path, init_file) {
+    //             Err(err) => {
+    //                 panic!("Create unit test!: {}", err)
+    //             }
+    //             Ok(v) => v,
+    //         };
+    //     }
+    // }
+    // return Ok(());
 }
 
 /// Gets the path to the unit test and its name.
